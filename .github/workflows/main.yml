@@ -135,9 +135,9 @@ jobs:
           }
           "
 
-      - name: Inject Bluetooth Polyfill Bridge (via Node)
+      - name: Inject Complete Bluetooth Polyfill Bridge (via Node)
         run: |
-          # العثور على ملف البداية وحقن الجسر البرمجي لتعريف البلوتوث ليعمل تماماً مثل متصفح كروم
+          # العثور على ملف البداية وحقن جسر بلوتوث كامل المحاكاة لإرسال بيانات الطباعة وقراءة الاسم
           node -e "
           const fs = require('fs');
           const path = require('path');
@@ -158,7 +158,7 @@ jobs:
           
           const entry = findEntry('src');
           if (entry) {
-            console.log('Injecting Web Bluetooth Polyfill to:', entry);
+            console.log('Injecting Complete Web Bluetooth Polyfill to:', entry);
             let content = fs.readFileSync(entry, 'utf8');
             
             const polyfill = [
@@ -180,9 +180,11 @@ jobs:
               '      try {',
               '        await BleClient.initialize({ registerReceiver: true });',
               '        const device = await BleClient.requestDevice(options);',
-              '        return {',
+              '        ',
+              '        // بناء هيكل كائن جهاز بلوتوث متكامل لمطابقة متصفح كروم',
+              '        const bluetoothDeviceObj = {',
               '          id: device.deviceId,',
-              '          name: device.name,',
+              '          name: device.name || device.deviceId,',
               '          gatt: {',
               '            connected: false,',
               '            connect: async function () {',
@@ -212,6 +214,8 @@ jobs:
               '            }',
               '          }',
               '        };',
+              '        ',
+              '        return bluetoothDeviceObj;',
               '      } catch (err) {',
               '        console.error(\"Web Bluetooth Polyfill Error:\", err);',
               '        throw err;',

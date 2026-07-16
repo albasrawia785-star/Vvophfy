@@ -262,7 +262,6 @@ jobs:
 
       - name: Deep Clean Environment
         run: |
-          # تنظيف بيئة العمل مع الإبقاء على ملفات الإعدادات لمنع أي تعارض أثناء البناء
           rm -rf node_modules package-lock.json dist android
 
       - name: Set up Node.js
@@ -283,21 +282,19 @@ jobs:
 
       - name: Initialize Capacitor Android
         run: |
-          # فحص ذكي: إذا لم يكن هناك ملف إعدادات، نقوم بإنشائه برمجياً لتفادي أخطاء الـ CLI التفاعلية
+          # كتابة ملف الإعدادات برمجياً بطريقة آمنة بدون الحاجة لـ EOF لتفادي أخطاء المفسر
           if [ ! -f "capacitor.config.json" ] && [ ! -f "capacitor.config.ts" ] && [ ! -f "capacitor.config.js" ]; then
             echo "Creating capacitor.config.json dynamically..."
-            cat << 'EOF' > capacitor.config.json
-            {
-              "appId": "com.saydalipro.pos",
-              "appName": "Saydali Pro POS",
-              "webDir": "dist"
-            }
-            EOF
+            echo "{" > capacitor.config.json
+            echo "  \"appId\": \"com.saydalipro.pos\"," >> capacitor.config.json
+            echo "  \"appName\": \"Saydali Pro POS\"," >> capacitor.config.json
+            echo "  \"webDir\": \"dist\"" >> capacitor.config.json
+            echo "}" >> capacitor.config.json
           else
             echo "Capacitor configuration file already exists. Skipping init..."
           fi
           
-          # إضافة منصة الأندرويد ومزامنتها بأمان
+          # إضافة منصة الأندرويد ومزامنتها
           npx cap add android || true
           npx cap sync android
 
@@ -305,14 +302,12 @@ jobs:
         run: |
           mkdir -p android/app/src/main/res/xml
           
-          cat << 'EOF' > android/app/src/main/res/xml/file_paths.xml
-          <?xml version="1.0" encoding="utf-8"?>
-          <paths xmlns:android="http://schemas.android.com/apk/res/android">
-              <external-path name="external_files" path="."/>
-              <cache-path name="cache_files" path="."/>
-              <files-path name="files" path="."/>
-          </paths>
-          EOF
+          echo "<?xml version=\"1.0\" encoding=\"utf-8\"?>" > android/app/src/main/res/xml/file_paths.xml
+          echo "<paths xmlns:android=\"http://schemas.android.com/apk/res/android\">" >> android/app/src/main/res/xml/file_paths.xml
+          echo "    <external-path name=\"external_files\" path=\".\"/>" >> android/app/src/main/res/xml/file_paths.xml
+          echo "    <cache-path name=\"cache_files\" path=\".\"/>" >> android/app/src/main/res/xml/file_paths.xml
+          echo "    <files-path name=\"files\" path=\".\"/>" >> android/app/src/main/res/xml/file_paths.xml
+          echo "</paths>" >> android/app/src/main/res/xml/file_paths.xml
 
           MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
           if [ -f "$MANIFEST_PATH" ]; then

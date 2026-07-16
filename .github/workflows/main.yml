@@ -137,7 +137,7 @@ jobs:
 
       - name: Inject Complete Bluetooth Polyfill Bridge (via Node)
         run: |
-          # العثور على ملف البداية وحقن جسر بلوتوث كامل المحاكاة لإرسال بيانات الطباعة وقراءة الاسم
+          # حقن الجسر البرمجي مع تحسين معالجة البيانات الثنائية (Buffers) لتحقيق الطباعة الفعلية بنجاح
           node -e "
           const fs = require('fs');
           const path = require('path');
@@ -158,19 +158,18 @@ jobs:
           
           const entry = findEntry('src');
           if (entry) {
-            console.log('Injecting Complete Web Bluetooth Polyfill to:', entry);
+            console.log('Injecting Stable Web Bluetooth Polyfill to:', entry);
             let content = fs.readFileSync(entry, 'utf8');
             
             const polyfill = [
-              'import { BleClient } from \"@capacitor-community/bluetooth-le\";',
-              '// تفعيل البلوتوث وحقن بروتوكول Web Bluetooth ليعمل على الأندرويد تلقائياً',
+              'import { BleClient, numbersToDataView } from \"@capacitor-community/bluetooth-le\";',
+              '',
               '(async () => {',
               '  try {',
               '    await BleClient.initialize({ registerReceiver: true });',
               '    await BleClient.requestEnabled();',
-              '    console.log(\"BLE Client Initialized!\");',
               '  } catch (e) {',
-              '    console.error(\"BLE Init Error:\", e);',
+              '    console.error(\"BLE Initialize Error:\", e);',
               '  }',
               '})();',
               '',
@@ -179,12 +178,13 @@ jobs:
               '    requestDevice: async function (options) {',
               '      try {',
               '        await BleClient.initialize({ registerReceiver: true });',
+              '        ',
+              '        // البحث عن الأجهزة وإظهارها للمستخدم بشكل متجاوب وسريع',
               '        const device = await BleClient.requestDevice(options);',
               '        ',
-              '        // بناء هيكل كائن جهاز بلوتوث متكامل لمطابقة متصفح كروم',
               '        const bluetoothDeviceObj = {',
               '          id: device.deviceId,',
-              '          name: device.name || device.deviceId,',
+              '          name: device.name || device.deviceId || \"Unknown Printer\",',
               '          gatt: {',
               '            connected: false,',
               '            connect: async function () {',
@@ -200,13 +200,28 @@ jobs:
               '              return {',
               '                getCharacteristic: async function (characteristicUuid) {',
               '                  return {',
+              '                    // دالة إرسال أوامر الطباعة الفعلية بعد تحويل البيانات لصيغة تفهمها الطابعة للأندرويد',
               '                    writeValue: async function (value) {',
-              '                      const view = value instanceof DataView ? value : new DataView(value.buffer || value);',
-              '                      await BleClient.write(device.deviceId, serviceUuid, characteristicUuid, view);',
+              '                      let bufferData;',
+              '                      if (value instanceof DataView) {',
+              '                        bufferData = value;',
+              '                      } else if (value.buffer) {',
+              '                        bufferData = new DataView(value.buffer);',
+              '                      } else {',
+              '                        bufferData = new DataView(value);',
+              '                      }',
+              '                      await BleClient.write(device.deviceId, serviceUuid, characteristicUuid, bufferData);',
               '                    },',
               '                    writeValueWithoutResponse: async function (value) {',
-              '                      const view = value instanceof DataView ? value : new DataView(value.buffer || value);',
-              '                      await BleClient.writeWithoutResponse(device.deviceId, serviceUuid, characteristicUuid, view);',
+              '                      let bufferData;',
+              '                      if (value instanceof DataView) {',
+              '                        bufferData = value;',
+              '                      } else if (value.buffer) {',
+              '                        bufferData = new DataView(value.buffer);',
+              '                      } else {',
+              '                        bufferData = new DataView(value);',
+              '                      }',
+              '                      await BleClient.writeWithoutResponse(device.deviceId, serviceUuid, characteristicUuid, bufferData);',
               '                    }',
               '                  };',
               '                }',
@@ -227,7 +242,7 @@ jobs:
             
             content = polyfill + '\n' + content;
             fs.writeFileSync(entry, content, 'utf8');
-            console.log('Web Bluetooth Polyfill successfully injected!');
+            console.log('Web Bluetooth Polyfill successfully injected with print support!');
           } else {
             console.log('Entry file not found for Bluetooth patch!');
           }

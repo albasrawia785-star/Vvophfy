@@ -130,7 +130,7 @@ jobs:
           }
           "
 
-      - name: Inject Full-Featured Web Bluetooth Emulator (via Node)
+      - name: Inject Ultra-Compatible Chrome Bluetooth Emulator (via Node)
         run: |
           node -e "
           const fs = require('fs');
@@ -152,25 +152,23 @@ jobs:
           
           const entry = findEntry('src');
           if (entry) {
-            console.log('Injecting Full Web Bluetooth Emulator to:', entry);
+            console.log('Injecting Ultra-Compatible Web Bluetooth Emulator to:', entry);
             let content = fs.readFileSync(entry, 'utf8');
             
             const polyfill = [
               'import { BleClient } from \"@capacitor-community/bluetooth-le\";',
               '',
-              '// تفعيل البلوتوث الأساسي عند بدء التشغيل',
               '(async () => {',
               '  try {',
               '    await BleClient.initialize({ registerReceiver: true });',
               '    await BleClient.requestEnabled();',
               '  } catch (e) {',
-              '    console.error(\"BLE Init failed:\", e);',
+              '    console.error(\"BLE Auto-Init Failed:\", e);',
               '  }',
               '})();',
               '',
               'if (typeof window !== \"undefined\" && !navigator.bluetooth) {',
-              '  // دالة مساعدة لتحويل معرفات UUID القصيرة إلى معرفات كاملة قياسية',
-              '  const canonicalUUID = (uuid) => {',
+              '  const formatUUID = (uuid) => {',
               '    if (typeof uuid === \"number\") uuid = uuid.toString(16);',
               '    if (typeof uuid === \"string\") {',
               '      if (uuid.length === 4) return \"0000\" + uuid.toLowerCase() + \"-0000-1000-8000-00805f9b34fb\";',
@@ -184,13 +182,11 @@ jobs:
               '    requestDevice: async function (options) {',
               '      try {',
               '        await BleClient.initialize({ registerReceiver: true });',
-              '        ',
-              '        // استدعاء نافذة اختيار الأجهزة الأصلية للأندرويد',
               '        const device = await BleClient.requestDevice(options);',
               '        ',
-              '        const bluetoothDeviceObj = {',
+              '        const nativeDevice = {',
               '          id: device.deviceId,',
-              '          name: device.name || \"Thermal Printer\",',
+              '          name: device.name || \"R80D-UB-610\",',
               '          gatt: {',
               '            connected: false,',
               '            connect: async function () {',
@@ -203,25 +199,39 @@ jobs:
               '              this.connected = false;',
               '            },',
               '            getPrimaryService: async function (serviceUuid) {',
-              '              const sUuid = canonicalUUID(serviceUuid);',
+              '              const sUuid = formatUUID(serviceUuid);',
               '              return {',
               '                uuid: sUuid,',
               '                getCharacteristic: async function (characteristicUuid) {',
-              '                  const cUuid = canonicalUUID(characteristicUuid);',
+              '                  const cUuid = formatUUID(characteristicUuid);',
               '                  return {',
               '                    uuid: cUuid,',
               '                    writeValue: async function (value) {',
-              '                      const view = value instanceof DataView ? value : new DataView(value.buffer || value);',
-              '                      await BleClient.write(device.deviceId, sUuid, cUuid, view);',
+              '                      // تحويل دقيق وآمن للبيانات الثنائية لتتوافق مع الطابعة',
+              '                      let bufferToSend;',
+              '                      if (value instanceof DataView) {',
+              '                        bufferToSend = value;',
+              '                      } else if (value && value.buffer) {',
+              '                        bufferToSend = new DataView(value.buffer);',
+              '                      } else {',
+              '                        bufferToSend = new DataView(value);',
+              '                      }',
+              '                      await BleClient.write(device.deviceId, sUuid, cUuid, bufferToSend);',
               '                    },',
               '                    writeValueWithoutResponse: async function (value) {',
-              '                      const view = value instanceof DataView ? value : new DataView(value.buffer || value);',
-              '                      await BleClient.writeWithoutResponse(device.deviceId, sUuid, cUuid, view);',
+              '                      let bufferToSend;',
+              '                      if (value instanceof DataView) {',
+              '                        bufferToSend = value;',
+              '                      } else if (value && value.buffer) {',
+              '                        bufferToSend = new DataView(value.buffer);',
+              '                      } else {',
+              '                        bufferToSend = new DataView(value);',
+              '                      }',
+              '                      await BleClient.writeWithoutResponse(device.deviceId, sUuid, cUuid, bufferToSend);',
               '                    }',
               '                  };',
               '                },',
               '                getCharacteristics: async function () {',
-              '                  // محاكاة استدعاء مصفوفة الخصائص لتفادي توقف كود الطباعة التلقائي',
               '                  return [];',
               '                }',
               '              };',
@@ -232,9 +242,9 @@ jobs:
               '          }',
               '        };',
               '        ',
-              '        return bluetoothDeviceObj;',
+              '        return nativeDevice;',
               '      } catch (err) {',
-              '        console.error(\"Full Bluetooth Polyfill Error:\", err);',
+              '        console.error(\"Bluetooth Emulation Failed:\", err);',
               '        throw err;',
               '      }',
               '    }',
@@ -244,7 +254,7 @@ jobs:
             
             content = polyfill + '\n' + content;
             fs.writeFileSync(entry, content, 'utf8');
-            console.log('Complete Web Bluetooth Emulator injected successfully!');
+            console.log('Ultra-Compatible Emulator successfully injected!');
           } else {
             console.log('Entry file not found!');
           }
@@ -264,6 +274,69 @@ jobs:
       - name: Install Project Dependencies
         run: |
           npm install --force
+
+      - name: Install Capacitor Core & Plugins (Before Build)
+        run: |
+          npm install @capacitor/core@latest @capacitor/cli@latest @capacitor/android@latest @capacitor/filesystem@latest @capacitor/share@latest @capacitor-community/bluetooth-le --force
+
+      - name: Build Web Application
+        run: npm run build
+
+      - name: Initialize Capacitor Android
+        run: |
+          npx cap init "Saydali Pro POS" "com.saydalipro.pos" --web-dir=dist
+          npx cap add android
+          npx cap sync android
+
+      - name: Configure FileProvider and Bluetooth Permissions
+        run: |
+          mkdir -p android/app/src/main/res/xml
+          
+          cat << 'EOF' > android/app/src/main/res/xml/file_paths.xml
+          <?xml version="1.0" encoding="utf-8"?>
+          <paths xmlns:android="http://schemas.android.com/apk/res/android">
+              <external-path name="external_files" path="."/>
+              <cache-path name="cache_files" path="."/>
+              <files-path name="files" path="."/>
+          </paths>
+          EOF
+
+          MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
+          if [ -f "$MANIFEST_PATH" ]; then
+            echo "Configuring AndroidManifest with permissions, Bluetooth and FileProvider..."
+            
+            sed -i '/<\/manifest>/i \    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />\n    <uses-permission android:name="android.permission.BLUETOOTH" />\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />\n    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />' $MANIFEST_PATH
+            
+            PROVIDER_TAG='<provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.fileprovider" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" /></provider>'
+            sed -i "s|</application>|    $PROVIDER_TAG\n    </application>|" $MANIFEST_PATH
+          fi
+
+      - name: Update Kotlin & Gradle Versions for Java 21
+        run: |
+          cd android
+          if [ -f "build.gradle" ]; then
+            sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = "1.9.24"/g' build.gradle
+            sed -i 's/kotlin_version = .*/kotlin_version = "1.9.24"/g' build.gradle
+          fi
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '21'
+
+      - name: Build Android APK
+        run: |
+          cd android
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon -Dorg.gradle.project.android.useAndroidX=true
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Saydali-Pro-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          overwrite: true
 
       - name: Install Capacitor Core & Plugins (Before Build)
         run: |

@@ -135,18 +135,99 @@ jobs:
           }
           "
 
-      - name: Inject Bluetooth Initialization to React Entry File
+      - name: Inject Bluetooth Polyfill Bridge (via Node)
         run: |
-          # العثور على ملف البداية وحقن كود تفعيل البلوتوث تلقائياً في السطر الأول
-          ENTRY_FILE=$(find src -name "main.tsx" -o -name "index.js" -o -name "main.jsx" -o -name "index.tsx" | head -n 1)
-          if [ -n "$ENTRY_FILE" ]; then
-            echo "Found Entry File: $ENTRY_FILE"
-            echo "Injecting Bluetooth Initialization Polyfill..."
-            # حقن استيراد وتفعيل مكتبة البلوتوث
-            sed -i '1i import { BleClient } from "@capacitor-community/bluetooth-le";\nBleClient.initialize({ registerReceiver: true }).catch(err => console.error("BLE Init Error:", err));' "$ENTRY_FILE"
-          else
-            echo "Warning: Entry file not found! Skipping injection."
-          fi
+          # العثور على ملف البداية وحقن الجسر البرمجي لتعريف البلوتوث ليعمل تماماً مثل متصفح كروم
+          node -e "
+          const fs = require('fs');
+          const path = require('path');
+          
+          function findEntry(dir) {
+            const files = fs.readdirSync(dir);
+            for (const file of files) {
+              const full = path.join(dir, file);
+              if (fs.statSync(full).isDirectory()) {
+                const found = findEntry(full);
+                if (found) return found;
+              } else if (/\.(tsx|ts|jsx|js)$/.test(file) && (file.startsWith('main') || file.startsWith('index') || file.startsWith('App'))) {
+                return full;
+              }
+            }
+            return null;
+          }
+          
+          const entry = findEntry('src');
+          if (entry) {
+            console.log('Injecting Web Bluetooth Polyfill to:', entry);
+            let content = fs.readFileSync(entry, 'utf8');
+            
+            const polyfill = [
+              'import { BleClient } from \"@capacitor-community/bluetooth-le\";',
+              '// تفعيل البلوتوث وحقن بروتوكول Web Bluetooth ليعمل على الأندرويد تلقائياً',
+              '(async () => {',
+              '  try {',
+              '    await BleClient.initialize({ registerReceiver: true });',
+              '    await BleClient.requestEnabled();',
+              '    console.log(\"BLE Client Initialized!\");',
+              '  } catch (e) {',
+              '    console.error(\"BLE Init Error:\", e);',
+              '  }',
+              '})();',
+              '',
+              'if (typeof window !== \"undefined\" && !navigator.bluetooth) {',
+              '  navigator.bluetooth = {',
+              '    requestDevice: async function (options) {',
+              '      try {',
+              '        await BleClient.initialize({ registerReceiver: true });',
+              '        const device = await BleClient.requestDevice(options);',
+              '        return {',
+              '          id: device.deviceId,',
+              '          name: device.name,',
+              '          gatt: {',
+              '            connected: false,',
+              '            connect: async function () {',
+              '              await BleClient.connect(device.deviceId);',
+              '              this.connected = true;',
+              '              return this;',
+              '            },',
+              '            disconnect: async function () {',
+              '              await BleClient.disconnect(device.deviceId);',
+              '              this.connected = false;',
+              '            },',
+              '            getPrimaryService: async function (serviceUuid) {',
+              '              return {',
+              '                getCharacteristic: async function (characteristicUuid) {',
+              '                  return {',
+              '                    writeValue: async function (value) {',
+              '                      const view = value instanceof DataView ? value : new DataView(value.buffer || value);',
+              '                      await BleClient.write(device.deviceId, serviceUuid, characteristicUuid, view);',
+              '                    },',
+              '                    writeValueWithoutResponse: async function (value) {',
+              '                      const view = value instanceof DataView ? value : new DataView(value.buffer || value);',
+              '                      await BleClient.writeWithoutResponse(device.deviceId, serviceUuid, characteristicUuid, view);',
+              '                    }',
+              '                  };',
+              '                }',
+              '              };',
+              '            }',
+              '          }',
+              '        };',
+              '      } catch (err) {',
+              '        console.error(\"Web Bluetooth Polyfill Error:\", err);',
+              '        throw err;',
+              '      }',
+              '    }',
+              '  };',
+              '}'
+            ].join('\n');
+            
+            content = polyfill + '\n' + content;
+            fs.writeFileSync(entry, content, 'utf8');
+            console.log('Web Bluetooth Polyfill successfully injected!');
+          } else {
+            console.log('Entry file not found for Bluetooth patch!');
+          }
+          "
 
       - name: Deep Clean Environment
         run: |
@@ -166,7 +247,7 @@ jobs:
 
       - name: Install Capacitor Core & Plugins (Before Build)
         run: |
-          # تثبيت الكاباسيتور والمكتبات المساعدة بما فيها مكتبة البلوتوث
+          # تثبيت المكتبات المطلوبة بما فيها مكتبة البلوتوث
           npm install @capacitor/core@latest @capacitor/cli@latest @capacitor/android@latest @capacitor/filesystem@latest @capacitor/share@latest @capacitor-community/bluetooth-le --force
 
       - name: Build Web Application
@@ -198,8 +279,8 @@ jobs:
           if [ -f "$MANIFEST_PATH" ]; then
             echo "Configuring AndroidManifest with permissions, Bluetooth and FileProvider..."
             
-            # حقن صلاحيات الكاميرا والتخزين والبلوتوث والموقع (المطلوبة للبحث عن الأجهزة القريبة)
-            sed -i '/<\/manifest>/i \    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />\n    <uses-permission android:name="android.permission.BLUETOOTH" />\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />\n    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />' $MANIFEST_PATH
+            # حقن صلاحيات الكاميرا والتخزين وصلاحيات البلوتوث الحديثة (الضرورية لـ Android 12 فما فوق)
+            sed -i '/<\/manifest>/i \    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />\n    <uses-permission android:name="android.permission.BLUETOOTH" />\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />\n    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />' $MANIFEST_PATH
             
             # حقن الـ FileProvider داخل وسم <application> لتمكين المشاركة الفورية للملفات
             PROVIDER_TAG='<provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.fileprovider" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" /></provider>'

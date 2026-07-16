@@ -15,7 +15,8 @@ jobs:
 
       - name: Pre-Clean Conflicting Configurations
         run: |
-          rm -rf capacitor.config.ts capacitor.config.json
+          # حذف مجلد أندرويد القديم فقط لضمان بناء نظيف، مع الحفاظ على ملفات الإعدادات الأصلية القادمة من الـ zip
+          rm -rf android
 
       - name: Unzip Project Files
         run: |
@@ -207,7 +208,6 @@ jobs:
               '                  return {',
               '                    uuid: cUuid,',
               '                    writeValue: async function (value) {',
-              '                      // تحويل دقيق وآمن للبيانات الثنائية لتتوافق مع الطابعة',
               '                      let bufferToSend;',
               '                      if (value instanceof DataView) {',
               '                        bufferToSend = value;',
@@ -262,9 +262,8 @@ jobs:
 
       - name: Deep Clean Environment
         run: |
+          # تنظيف بيئة العمل مع الإبقاء على ملفات الإعدادات لمنع أي تعارض أثناء البناء
           rm -rf node_modules package-lock.json dist android
-          find . -name "capacitor.config.ts" -delete
-          find . -name "capacitor.config.json" -delete
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -284,71 +283,22 @@ jobs:
 
       - name: Initialize Capacitor Android
         run: |
-          npx cap init "Saydali Pro POS" "com.saydalipro.pos" --web-dir=dist
-          npx cap add android
-          npx cap sync android
-
-      - name: Configure FileProvider and Bluetooth Permissions
-        run: |
-          mkdir -p android/app/src/main/res/xml
+          # فحص ذكي: إذا لم يكن هناك ملف إعدادات، نقوم بإنشائه برمجياً لتفادي أخطاء الـ CLI التفاعلية
+          if [ ! -f "capacitor.config.json" ] && [ ! -f "capacitor.config.ts" ] && [ ! -f "capacitor.config.js" ]; then
+            echo "Creating capacitor.config.json dynamically..."
+            cat << 'EOF' > capacitor.config.json
+            {
+              "appId": "com.saydalipro.pos",
+              "appName": "Saydali Pro POS",
+              "webDir": "dist"
+            }
+            EOF
+          else
+            echo "Capacitor configuration file already exists. Skipping init..."
+          fi
           
-          cat << 'EOF' > android/app/src/main/res/xml/file_paths.xml
-          <?xml version="1.0" encoding="utf-8"?>
-          <paths xmlns:android="http://schemas.android.com/apk/res/android">
-              <external-path name="external_files" path="."/>
-              <cache-path name="cache_files" path="."/>
-              <files-path name="files" path="."/>
-          </paths>
-          EOF
-
-          MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
-          if [ -f "$MANIFEST_PATH" ]; then
-            echo "Configuring AndroidManifest with permissions, Bluetooth and FileProvider..."
-            
-            sed -i '/<\/manifest>/i \    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />\n    <uses-permission android:name="android.permission.BLUETOOTH" />\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />\n    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />' $MANIFEST_PATH
-            
-            PROVIDER_TAG='<provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.fileprovider" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" /></provider>'
-            sed -i "s|</application>|    $PROVIDER_TAG\n    </application>|" $MANIFEST_PATH
-          fi
-
-      - name: Update Kotlin & Gradle Versions for Java 21
-        run: |
-          cd android
-          if [ -f "build.gradle" ]; then
-            sed -i 's/ext.kotlin_version = .*/ext.kotlin_version = "1.9.24"/g' build.gradle
-            sed -i 's/kotlin_version = .*/kotlin_version = "1.9.24"/g' build.gradle
-          fi
-
-      - name: Set up JDK 21
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '21'
-
-      - name: Build Android APK
-        run: |
-          cd android
-          chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon -Dorg.gradle.project.android.useAndroidX=true
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: Saydali-Pro-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-          overwrite: true
-
-      - name: Install Capacitor Core & Plugins (Before Build)
-        run: |
-          npm install @capacitor/core@latest @capacitor/cli@latest @capacitor/android@latest @capacitor/filesystem@latest @capacitor/share@latest @capacitor-community/bluetooth-le --force
-
-      - name: Build Web Application
-        run: npm run build
-
-      - name: Initialize Capacitor Android
-        run: |
-          npx cap init "Saydali Pro POS" "com.saydalipro.pos" --web-dir=dist
-          npx cap add android
+          # إضافة منصة الأندرويد ومزامنتها بأمان
+          npx cap add android || true
           npx cap sync android
 
       - name: Configure FileProvider and Bluetooth Permissions

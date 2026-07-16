@@ -15,7 +15,6 @@ jobs:
 
       - name: Pre-Clean Conflicting Configurations
         run: |
-          # حذف أي ملفات إعدادات قديمة مسبقاً لمنع خطأ الـ init نهائياً
           rm -rf capacitor.config.ts capacitor.config.json
 
       - name: Unzip Project Files
@@ -24,7 +23,6 @@ jobs:
           TARGET_DIR=$(find temp_unzip -name "package.json" -exec dirname {} \;)
           if [ -n "$TARGET_DIR" ]; then
             echo "Found project files in: $TARGET_DIR"
-            # إحاطة المسارات بعلامات اقتباس ثنائية لحل مشكلة المسافات في المجلدات العربية
             cp -r "$TARGET_DIR"/* .
           else
             echo "Error: package.json not found!"
@@ -62,11 +60,9 @@ jobs:
             console.log('Found Target File:', targetFile);
             let content = fs.readFileSync(targetFile, 'utf8');
 
-            // 1. إضافة مكتبات Capacitor في بداية الملف
             const imports = 'import { Filesystem, Directory } from \"@capacitor/filesystem\";\nimport { Share } from \"@capacitor/share\";\nimport { Capacitor } from \"@capacitor/core\";\n';
             content = imports + content;
 
-            // 2. دالة المشاركة الذكية لحقنها في الملف بأسلوب كتابة نصوص مستقر وآمن جداً
             const patchCode = [
               '',
               'window.handleCapacitorShare = async (blobOrUrl, fallbackFileName) => {',
@@ -123,7 +119,6 @@ jobs:
 
             content = content + '\n' + patchCode;
 
-            // 3. استبدال طريقة التحميل التقليدية باستدعاء دالتنا الذكية
             content = content.replace(/([a-zA-Z0-9_]*)\.click\(\)/g, (match, p1) => {
               return 'if (window.handleCapacitorShare) { window.handleCapacitorShare(' + p1 + '.href || ' + p1 + ', \"Saydali_Pro_Backup.zip\"); } else { ' + match + ' }';
             });
@@ -135,9 +130,8 @@ jobs:
           }
           "
 
-      - name: Inject Complete Bluetooth Polyfill Bridge (via Node)
+      - name: Inject Full-Featured Web Bluetooth Emulator (via Node)
         run: |
-          # حقن الجسر البرمجي مع تحسين معالجة البيانات الثنائية (Buffers) لتحقيق الطباعة الفعلية بنجاح
           node -e "
           const fs = require('fs');
           const path = require('path');
@@ -158,33 +152,45 @@ jobs:
           
           const entry = findEntry('src');
           if (entry) {
-            console.log('Injecting Stable Web Bluetooth Polyfill to:', entry);
+            console.log('Injecting Full Web Bluetooth Emulator to:', entry);
             let content = fs.readFileSync(entry, 'utf8');
             
             const polyfill = [
-              'import { BleClient, numbersToDataView } from \"@capacitor-community/bluetooth-le\";',
+              'import { BleClient } from \"@capacitor-community/bluetooth-le\";',
               '',
+              '// تفعيل البلوتوث الأساسي عند بدء التشغيل',
               '(async () => {',
               '  try {',
               '    await BleClient.initialize({ registerReceiver: true });',
               '    await BleClient.requestEnabled();',
               '  } catch (e) {',
-              '    console.error(\"BLE Initialize Error:\", e);',
+              '    console.error(\"BLE Init failed:\", e);',
               '  }',
               '})();',
               '',
               'if (typeof window !== \"undefined\" && !navigator.bluetooth) {',
+              '  // دالة مساعدة لتحويل معرفات UUID القصيرة إلى معرفات كاملة قياسية',
+              '  const canonicalUUID = (uuid) => {',
+              '    if (typeof uuid === \"number\") uuid = uuid.toString(16);',
+              '    if (typeof uuid === \"string\") {',
+              '      if (uuid.length === 4) return \"0000\" + uuid.toLowerCase() + \"-0000-1000-8000-00805f9b34fb\";',
+              '      if (uuid.length === 8) return uuid.toLowerCase() + \"-0000-1000-8000-00805f9b34fb\";',
+              '      return uuid.toLowerCase();',
+              '    }',
+              '    return uuid;',
+              '  };',
+              '',
               '  navigator.bluetooth = {',
               '    requestDevice: async function (options) {',
               '      try {',
               '        await BleClient.initialize({ registerReceiver: true });',
               '        ',
-              '        // البحث عن الأجهزة وإظهارها للمستخدم بشكل متجاوب وسريع',
+              '        // استدعاء نافذة اختيار الأجهزة الأصلية للأندرويد',
               '        const device = await BleClient.requestDevice(options);',
               '        ',
               '        const bluetoothDeviceObj = {',
               '          id: device.deviceId,',
-              '          name: device.name || device.deviceId || \"Unknown Printer\",',
+              '          name: device.name || \"Thermal Printer\",',
               '          gatt: {',
               '            connected: false,',
               '            connect: async function () {',
@@ -197,42 +203,38 @@ jobs:
               '              this.connected = false;',
               '            },',
               '            getPrimaryService: async function (serviceUuid) {',
+              '              const sUuid = canonicalUUID(serviceUuid);',
               '              return {',
+              '                uuid: sUuid,',
               '                getCharacteristic: async function (characteristicUuid) {',
+              '                  const cUuid = canonicalUUID(characteristicUuid);',
               '                  return {',
-              '                    // دالة إرسال أوامر الطباعة الفعلية بعد تحويل البيانات لصيغة تفهمها الطابعة للأندرويد',
+              '                    uuid: cUuid,',
               '                    writeValue: async function (value) {',
-              '                      let bufferData;',
-              '                      if (value instanceof DataView) {',
-              '                        bufferData = value;',
-              '                      } else if (value.buffer) {',
-              '                        bufferData = new DataView(value.buffer);',
-              '                      } else {',
-              '                        bufferData = new DataView(value);',
-              '                      }',
-              '                      await BleClient.write(device.deviceId, serviceUuid, characteristicUuid, bufferData);',
+              '                      const view = value instanceof DataView ? value : new DataView(value.buffer || value);',
+              '                      await BleClient.write(device.deviceId, sUuid, cUuid, view);',
               '                    },',
               '                    writeValueWithoutResponse: async function (value) {',
-              '                      let bufferData;',
-              '                      if (value instanceof DataView) {',
-              '                        bufferData = value;',
-              '                      } else if (value.buffer) {',
-              '                        bufferData = new DataView(value.buffer);',
-              '                      } else {',
-              '                        bufferData = new DataView(value);',
-              '                      }',
-              '                      await BleClient.writeWithoutResponse(device.deviceId, serviceUuid, characteristicUuid, bufferData);',
+              '                      const view = value instanceof DataView ? value : new DataView(value.buffer || value);',
+              '                      await BleClient.writeWithoutResponse(device.deviceId, sUuid, cUuid, view);',
               '                    }',
               '                  };',
+              '                },',
+              '                getCharacteristics: async function () {',
+              '                  // محاكاة استدعاء مصفوفة الخصائص لتفادي توقف كود الطباعة التلقائي',
+              '                  return [];',
               '                }',
               '              };',
+              '            },',
+              '            getPrimaryServices: async function () {',
+              '              return [];',
               '            }',
               '          }',
               '        };',
               '        ',
               '        return bluetoothDeviceObj;',
               '      } catch (err) {',
-              '        console.error(\"Web Bluetooth Polyfill Error:\", err);',
+              '        console.error(\"Full Bluetooth Polyfill Error:\", err);',
               '        throw err;',
               '      }',
               '    }',
@@ -242,15 +244,14 @@ jobs:
             
             content = polyfill + '\n' + content;
             fs.writeFileSync(entry, content, 'utf8');
-            console.log('Web Bluetooth Polyfill successfully injected with print support!');
+            console.log('Complete Web Bluetooth Emulator injected successfully!');
           } else {
-            console.log('Entry file not found for Bluetooth patch!');
+            console.log('Entry file not found!');
           }
           "
 
       - name: Deep Clean Environment
         run: |
-          # تنظيف شامل للمجلدات والملفات المتعارضة حتى داخل المجلدات الفرعية
           rm -rf node_modules package-lock.json dist android
           find . -name "capacitor.config.ts" -delete
           find . -name "capacitor.config.json" -delete
@@ -266,7 +267,6 @@ jobs:
 
       - name: Install Capacitor Core & Plugins (Before Build)
         run: |
-          # تثبيت المكتبات المطلوبة بما فيها مكتبة البلوتوث
           npm install @capacitor/core@latest @capacitor/cli@latest @capacitor/android@latest @capacitor/filesystem@latest @capacitor/share@latest @capacitor-community/bluetooth-le --force
 
       - name: Build Web Application
@@ -280,10 +280,8 @@ jobs:
 
       - name: Configure FileProvider and Bluetooth Permissions
         run: |
-          # 1. إنشاء مجلد xml الخاص بالصلاحيات إذا لم يكن موجوداً
           mkdir -p android/app/src/main/res/xml
           
-          # 2. إنشاء ملف file_paths.xml لكي يسمح للأندرويد بمشاركة الملفات من الكاش والمستندات
           cat << 'EOF' > android/app/src/main/res/xml/file_paths.xml
           <?xml version="1.0" encoding="utf-8"?>
           <paths xmlns:android="http://schemas.android.com/apk/res/android">
@@ -293,15 +291,12 @@ jobs:
           </paths>
           EOF
 
-          # 3. حقن الـ FileProvider والصلاحيات والبلوتوث داخل الـ AndroidManifest.xml
           MANIFEST_PATH="android/app/src/main/AndroidManifest.xml"
           if [ -f "$MANIFEST_PATH" ]; then
             echo "Configuring AndroidManifest with permissions, Bluetooth and FileProvider..."
             
-            # حقن صلاحيات الكاميرا والتخزين وصلاحيات البلوتوث الحديثة (الضرورية لـ Android 12 فما فوق)
             sed -i '/<\/manifest>/i \    <uses-permission android:name="android.permission.CAMERA" />\n    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />\n    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />\n    <uses-permission android:name="android.permission.BLUETOOTH" />\n    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />\n    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />\n    <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />\n    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />\n    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />\n    <uses-feature android:name="android.hardware.camera" android:required="false" />\n    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false" />' $MANIFEST_PATH
             
-            # حقن الـ FileProvider داخل وسم <application> لتمكين المشاركة الفورية للملفات
             PROVIDER_TAG='<provider android:name="androidx.core.content.FileProvider" android:authorities="${applicationId}.fileprovider" android:exported="false" android:grantUriPermissions="true"><meta-data android:name="android.support.FILE_PROVIDER_PATHS" android:resource="@xml/file_paths" /></provider>'
             sed -i "s|</application>|    $PROVIDER_TAG\n    </application>|" $MANIFEST_PATH
           fi

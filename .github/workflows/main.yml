@@ -28,7 +28,7 @@ jobs:
             rm -rf temp_unzip
           fi
 
-      # 2. إعداد بايثون لتشفير التوكن العسكري (نفس النظام الذكي)
+      # 2. إعداد بايثون لتشفير التوكن العسكري (معالجة ترميز UTF-8 لويندوز)
       - name: Set up Python for Encryption
         uses: actions/setup-python@v5
         with:
@@ -37,11 +37,19 @@ jobs:
       - name: Smart Encrypt & Inject Database Credentials
         shell: bash
         env:
+          PYTHONIOENCODING: utf-8
+          PYTHONUTF8: '1'
           RAW_TURSO_URL: ${{ secrets.TURSO_URL || '' }}
           RAW_TURSO_TOKEN: ${{ secrets.TURSO_TOKEN || '' }}
         run: |
           python -c "
-          import os, re, json
+          import os, sys, re, json
+
+          if sys.stdout.encoding != 'utf-8':
+              try:
+                  sys.stdout.reconfigure(encoding='utf-8')
+              except:
+                  pass
 
           raw_url = os.environ.get('RAW_TURSO_URL', '').strip()
           raw_token = os.environ.get('RAW_TURSO_TOKEN', '').strip()
@@ -51,7 +59,7 @@ jobs:
               aldion_path = 'src/aldion.ts'
 
           if raw_url and raw_token:
-              print('🔒 جاري تشفير التوكن لنسخة الويندوز...')
+              print('[ENCRYPT] Jari tashfeer al-token wa al-rabit...')
               url_key = [83, 183, 31, 140, 66, 158, 97, 170, 53, 212]
               token_key = [155, 77, 226, 26, 119, 60, 245, 134, 41, 161, 100, 216]
 
@@ -80,9 +88,11 @@ jobs:
 
                   with open(aldion_path, 'w', encoding='utf-8') as f:
                       f.write(content)
-                  print('✅ تم التشفير بنجاح!')
+                  print('[SUCCESS] Database credentials encrypted successfully.')
+              else:
+                  print('[WARNING] aldion.ts not found.')
           else:
-              print('⚡ سيتم استخدام التوكن وقاعدة البيانات الموجودة في الملفات.')
+              print('[INFO] Using existing credentials from project files.')
           "
 
       # 3. إعداد Node.js وبناء تطبيق الويب
@@ -123,7 +133,7 @@ jobs:
               }
             });
 
-            Menu.setApplicationMenu(null); // إخفاء القوائم الافتراضية لمنح مظهر تطبيقي احترافي
+            Menu.setApplicationMenu(null);
             win.loadFile(path.join(__dirname, 'dist', 'index.html'));
           }
 

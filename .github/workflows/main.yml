@@ -1,4 +1,4 @@
-name: Build Universal Windows EXE (Fixed Native Bindings)
+name: Build Universal Windows EXE (All Windows OS Supported)
 
 on:
   push:
@@ -32,12 +32,10 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Clean & Reinstall Native Dependencies
-        shell: bash
+      - name: Install Dependencies & Fix Tailwind Native Bindings
         run: |
-          rm -rf node_modules package-lock.json
-          npm install --os=win32 --cpu=x64
-          npm install --save-dev electron@22.3.27 electron-builder@latest
+          npm install
+          npm install --save-dev @tailwindcss/oxide-win32-x64-msvc electron@22.3.27 electron-builder@latest
           npm rebuild
 
       - name: Build Web Application
@@ -71,7 +69,7 @@ jobs:
           });
           EOF
 
-      - name: Update package.json Metadata (All Windows OS Support)
+      - name: Update package.json Metadata (All Windows OS Support & Offline Setup)
         shell: bash
         run: |
           node -e '

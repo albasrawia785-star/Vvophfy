@@ -1,140 +1,64 @@
-name: Build Windows EXE Desktop App
+Name: Build Windows EXE
 
 on:
   push:
     branches:
       - main
-  workflow_dispatch: # يتيح لك تشغيل البناء يدوياً بنقرة زر من GitHub
 
 jobs:
-  build-windows:
+  build:
     runs-on: windows-latest
 
     steps:
       - name: Checkout Source Code
         uses: actions/checkout@v4
 
-      # 1. استخراج ملفات المشروع إذا كان مرفوعاً كملف مضغوط ZIP
       - name: Unzip Project Files
         shell: bash
         run: |
-          if ls *.zip 1> /dev/null 2>&1; then
-            unzip *.zip -d temp_unzip || true
-            TARGET_DIR=$(find temp_unzip -name "package.json" -exec dirname {} \;)
-            if [ -n "$TARGET_DIR" ]; then
-              echo "Found project files in: $TARGET_DIR"
-              cp -r $TARGET_DIR/* .
-            fi
-            rm -rf temp_unzip
+          unzip "pos.zip--صيدلي-برو" -d temp_unzip || unzip *.zip -d temp_unzip || true
+          TARGET_DIR=$(find temp_unzip -name "package.json" -exec dirname {} \;)
+          if [ -n "$TARGET_DIR" ]; then
+            echo "Found project files in: $TARGET_DIR"
+            cp -r $TARGET_DIR/* .
+          else
+            echo "Error: package.json not found!"
+            exit 1
           fi
+          rm -rf temp_unzip
 
-      # 2. إعداد بايثون لتشفير التوكن العسكري (معالجة ترميز UTF-8 لويندوز)
-      - name: Set up Python for Encryption
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.x'
-
-      - name: Smart Encrypt & Inject Database Credentials
-        shell: bash
-        env:
-          PYTHONIOENCODING: utf-8
-          PYTHONUTF8: '1'
-          RAW_TURSO_URL: ${{ secrets.TURSO_URL || '' }}
-          RAW_TURSO_TOKEN: ${{ secrets.TURSO_TOKEN || '' }}
-        run: |
-          python -c "
-          import os, sys, re, json
-
-          if sys.stdout.encoding != 'utf-8':
-              try:
-                  sys.stdout.reconfigure(encoding='utf-8')
-              except:
-                  pass
-
-          raw_url = os.environ.get('RAW_TURSO_URL', '').strip()
-          raw_token = os.environ.get('RAW_TURSO_TOKEN', '').strip()
-
-          aldion_path = 'aldion.ts'
-          if not os.path.exists(aldion_path):
-              aldion_path = 'src/aldion.ts'
-
-          if raw_url and raw_token:
-              print('[ENCRYPT] Jari tashfeer al-token wa al-rabit...')
-              url_key = [83, 183, 31, 140, 66, 158, 97, 170, 53, 212]
-              token_key = [155, 77, 226, 26, 119, 60, 245, 134, 41, 161, 100, 216]
-
-              def encrypt_bytes(text, key, salt=7):
-                  return [(ord(c) ^ key[i % len(key)] ^ ((i * salt) & 0xFF)) & 0xFF for i, c in enumerate(text)]
-
-              enc_url_bytes = encrypt_bytes(raw_url, url_key)
-              enc_token_bytes = encrypt_bytes(raw_token, token_key)
-
-              if os.path.exists(aldion_path):
-                  with open(aldion_path, 'r', encoding='utf-8') as f:
-                      content = f.read()
-
-                  content = re.sub(
-                      r'const _CIPHER_TOKEN_BYTES:\s*number\[\]\s*=\s*\[[\s\S]*?\];',
-                      f'const _CIPHER_TOKEN_BYTES: number[] = {json.dumps(enc_token_bytes)};',
-                      content
-                  )
-                  content = re.sub(
-                      r'const _CIPHER_URL_BYTES:\s*number\[\]\s*=\s*\[[\s\S]*?\];',
-                      f'const _CIPHER_URL_BYTES: number[] = {json.dumps(enc_url_bytes)};',
-                      content
-                  )
-                  content = re.sub(r'export const MANUAL_OVERRIDE_TURSO_URL:\s*string\s*=\s*[\"|\'].*?[\"|\'];', 'export const MANUAL_OVERRIDE_TURSO_URL: string = \"\";', content)
-                  content = re.sub(r'export const MANUAL_OVERRIDE_TURSO_TOKEN:\s*string\s*=\s*[\"|\'].*?[\"|\'];', 'export const MANUAL_OVERRIDE_TURSO_TOKEN: string = \"\";', content)
-
-                  with open(aldion_path, 'w', encoding='utf-8') as f:
-                      f.write(content)
-                  print('[SUCCESS] Database credentials encrypted successfully.')
-              else:
-                  print('[WARNING] aldion.ts not found.')
-          else:
-              print('[INFO] Using existing credentials from project files.')
-          "
-
-      # 3. إعداد Node.js وبناء تطبيق الويب
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
       - name: Install Dependencies
-        shell: bash
         run: |
           npm install --force
-          npm install electron electron-builder --save-dev
+          npm install --save-dev electron electron-builder
 
-      - name: Build Web Frontend
-        shell: bash
+      - name: Build Web Application
         run: npm run build
 
-      # 4. حقن ملف تشغيل سطح المكتب لويندوز (Electron Entry Point)
-      - name: Create Electron Desktop Launcher
+      - name: Create Electron Entry Point
         shell: bash
         run: |
-          cat << 'EOF' > electron-main.cjs
-          const { app, BrowserWindow, Menu } = require('electron');
+          cat << 'EOF' > main.js
+          const { app, BrowserWindow } = require('electron');
           const path = require('path');
 
           function createWindow() {
             const win = new BrowserWindow({
-              width: 1280,
-              height: 850,
-              minWidth: 950,
-              minHeight: 650,
-              title: "دفتر الديون - نظام إدارة الحسابات",
-              icon: path.join(__dirname, 'dist', 'icon.png'),
+              width: 1200,
+              height: 800,
+              autoHideMenuBar: true,
               webPreferences: {
                 nodeIntegration: false,
                 contextIsolation: true
               }
             });
 
-            Menu.setApplicationMenu(null);
-            win.loadFile(path.join(__dirname, 'dist', 'index.html'));
+            win.loadFile('dist/index.html');
           }
 
           app.whenReady().then(createWindow);
@@ -144,24 +68,36 @@ jobs:
           });
           EOF
 
-      # 5. بناء ملف الـ EXE (Installer + Portable)
-      - name: Package Windows EXE
+      - name: Update package.json Metadata
         shell: bash
         run: |
-          npx electron-builder --win --x64 \
-            --config.appId="com.daftar.aldeyon" \
-            --config.productName="دفتر الديون" \
-            --config.directories.output="release-exe" \
-            --config.files='["dist/**/*", "electron-main.cjs"]' \
-            --config.extraMetadata.main="electron-main.cjs" \
-            --config.win.target="nsis" \
-            --config.nsis.oneClick=false \
-            --config.nsis.allowToChangeInstallationDirectory=true \
-            --config.nsis.createDesktopShortcut=true
+          node -e '
+            const fs = require("fs");
+            const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            pkg.name = "daftar-aldeyon";
+            pkg.version = "1.0.0";
+            pkg.description = "Daftar Aldeyon Desktop App";
+            pkg.author = "Developer";
+            pkg.build = {
+              appId: "com.daftar.aldeyon",
+              productName: "دفتر الديون",
+              directories: {
+                output: "dist_electron"
+              },
+              win: {
+                target: "nsis"
+              }
+            };
+            fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2));
+          '
 
-      # 6. رفع ملف الـ EXE النهائي للتنزيل المباشر
-      - name: Upload Windows EXE Application
+      - name: Build Windows EXE
+        shell: bash
+        run: |
+          npx electron-builder --win nsis --config.extraMetadata.main=main.js --publish never
+
+      - name: Upload Windows EXE Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Daftar-Aldeyon-Windows-EXE
-          path: release-exe/*.exe
+          name: Daftar-Aldeyon-Windows
+          path: dist_electron/*.exe

@@ -1,4 +1,4 @@
-name: Build Universal Windows EXE (All Windows OS Supported)
+name: Build Universal Windows EXE (Fix Tailwind Native Error)
 
 on:
   push:
@@ -32,10 +32,10 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Install Dependencies & Fix Electron Legacy Version
+      - name: Install Dependencies & Fix Native Bindings
         run: |
-          npm install --force
-          npm install --save-dev electron@22.3.27 electron-builder@latest
+          npm install electron@22.3.27 electron-builder@latest --save-dev
+          npm rebuild
 
       - name: Build Web Application
         run: npm run build

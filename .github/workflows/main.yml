@@ -1,4 +1,4 @@
-name: Build Universal Windows EXE (All Windows OS Supported)
+name: Build Universal Windows EXE (Fixed Native Bindings)
 
 on:
   push:
@@ -32,9 +32,11 @@ jobs:
         with:
           node-version: '18'
 
-      - name: Install Dependencies & Fix Native Bindings
+      - name: Clean & Reinstall Native Dependencies
+        shell: bash
         run: |
-          npm install
+          rm -rf node_modules package-lock.json
+          npm install --os=win32 --cpu=x64
           npm install --save-dev electron@22.3.27 electron-builder@latest
           npm rebuild
 
@@ -69,7 +71,7 @@ jobs:
           });
           EOF
 
-      - name: Update package.json Metadata (All Windows OS Support & Offline Setup)
+      - name: Update package.json Metadata (All Windows OS Support)
         shell: bash
         run: |
           node -e '

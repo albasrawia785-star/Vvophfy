@@ -1,4 +1,4 @@
-name: Build Windows EXE
+Name: Build Windows EXE
 
 on:
   push:
@@ -68,7 +68,7 @@ jobs:
           });
           EOF
 
-      - name: Update package.json Metadata
+      - name: Update package.json Metadata (Offline Full Installer)
         shell: bash
         run: |
           node -e '
@@ -85,7 +85,17 @@ jobs:
                 output: "dist_electron"
               },
               win: {
-                target: "nsis"
+                target: [
+                  {
+                    target: "nsis",
+                    arch: ["x64"]
+                  }
+                ]
+              },
+              nsis: {
+                oneClick: false,
+                allowToChangeInstallationDirectory: true,
+                differentialPackage: false
               }
             };
             fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2));

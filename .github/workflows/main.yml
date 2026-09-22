@@ -30,9 +30,9 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '20'
 
-      - name: Install Dependencies & Fix Tailwind Native Bindings
+      - name: Install Dependencies & Fix Native Bindings
         run: |
           npm install
           npm install --save-dev @tailwindcss/oxide-win32-x64-msvc electron@22.3.27 electron-builder@latest
@@ -40,6 +40,8 @@ jobs:
 
       - name: Build Web Application
         run: npm run build
+        env:
+          NODE_OPTIONS: "--experimental-global-webcrypto"
 
       - name: Create Electron Entry Point
         shell: bash

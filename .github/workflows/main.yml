@@ -1,4 +1,4 @@
-name: Build Universal Windows EXE (Fix Tailwind Native Error)
+name: Build Universal Windows EXE (All Windows OS Supported)
 
 on:
   push:
@@ -34,7 +34,8 @@ jobs:
 
       - name: Install Dependencies & Fix Native Bindings
         run: |
-          npm install electron@22.3.27 electron-builder@latest --save-dev
+          npm install
+          npm install --save-dev electron@22.3.27 electron-builder@latest
           npm rebuild
 
       - name: Build Web Application
@@ -68,7 +69,7 @@ jobs:
           });
           EOF
 
-      - name: Update package.json Metadata (All Windows Versions Support)
+      - name: Update package.json Metadata (All Windows OS Support & Offline Setup)
         shell: bash
         run: |
           node -e '
@@ -110,5 +111,5 @@ jobs:
       - name: Upload Windows EXE Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Daftar-Aldeyon-Windows-All-Versions
+          name: Daftar-Aldeyon-Windows-Universal
           path: dist_electron/*.exe

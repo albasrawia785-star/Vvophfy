@@ -1,4 +1,4 @@
-name: Build Windows EXE
+name: Build Universal Windows EXE (All Windows OS Supported)
 
 on:
   push:
@@ -30,12 +30,12 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: '18'
 
-      - name: Install Dependencies
+      - name: Install Dependencies & Fix Electron Legacy Version
         run: |
           npm install --force
-          npm install --save-dev electron electron-builder
+          npm install --save-dev electron@22.3.27 electron-builder@latest
 
       - name: Build Web Application
         run: npm run build
@@ -68,7 +68,7 @@ jobs:
           });
           EOF
 
-      - name: Update package.json Metadata (Offline Full Installer)
+      - name: Update package.json Metadata (All Windows Versions Support)
         shell: bash
         run: |
           node -e '
@@ -88,26 +88,27 @@ jobs:
                 target: [
                   {
                     target: "nsis",
-                    arch: ["x64"]
+                    arch: ["x64", "ia32"]
                   }
                 ]
               },
               nsis: {
                 oneClick: false,
                 allowToChangeInstallationDirectory: true,
-                differentialPackage: false
+                differentialPackage: false,
+                runAfterFinish: true
               }
             };
             fs.writeFileSync("package.json", JSON.stringify(pkg, null, 2));
           '
 
-      - name: Build Windows EXE
+      - name: Build Universal Windows EXE
         shell: bash
         run: |
-          npx electron-builder --win nsis --config.extraMetadata.main=main.js --publish never
+          npx electron-builder --win nsis --x64 --ia32 --config.extraMetadata.main=main.js --publish never
 
       - name: Upload Windows EXE Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Daftar-Aldeyon-Windows
+          name: Daftar-Aldeyon-Windows-All-Versions
           path: dist_electron/*.exe

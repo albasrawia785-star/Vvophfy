@@ -43,10 +43,10 @@ jobs:
         env:
           NODE_OPTIONS: "--experimental-global-webcrypto"
 
-      - name: Create Electron Entry Point
+      - name: Create Electron Entry Point (CJS Format)
         shell: bash
         run: |
-          cat << 'EOF' > main.js
+          cat << 'EOF' > main.cjs
           const { app, BrowserWindow } = require('electron');
           const path = require('path');
 
@@ -81,6 +81,7 @@ jobs:
             pkg.version = "1.0.0";
             pkg.description = "Daftar Aldeyon Desktop App";
             pkg.author = "Developer";
+            pkg.main = "main.cjs";
             pkg.build = {
               appId: "com.daftar.aldeyon",
               productName: "دفتر الديون",
@@ -108,7 +109,7 @@ jobs:
       - name: Build Universal Windows EXE
         shell: bash
         run: |
-          npx electron-builder --win nsis --x64 --ia32 --config.extraMetadata.main=main.js --publish never
+          npx electron-builder --win nsis --x64 --ia32 --config.extraMetadata.main=main.cjs --publish never
 
       - name: Upload Windows EXE Artifact
         uses: actions/upload-artifact@v4
